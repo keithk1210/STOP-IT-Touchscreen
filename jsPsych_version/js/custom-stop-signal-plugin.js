@@ -1,19 +1,3 @@
-/**
- * custom-stop-signal-plugin for jsPsych
- * by Luc Vermeylen
- *
- * based on:
- * jspsych-image-keyboard-response
- * by Josh de Leeuw
- *
- * plugin for displaying two stimuli ('stimulus1' and 'stimulus2') with a certain
- * inter-stimulus-interval ('ISI') and getting one keyboard response to the whole trial
- * with a certain total trial duration ('trial_duration')
- *
- *
- **/
-
-
 jsPsych.plugins["custom-stop-signal-plugin"] = (function() {
 
   var plugin = {};
@@ -49,11 +33,11 @@ jsPsych.plugins["custom-stop-signal-plugin"] = (function() {
         description: 'The second image to be displayed'
       },
       choices: {
-        type: jsPsych.plugins.parameterType.KEYCODE,
+        type: jsPsych.plugins.parameterType.STRING,
         array: true,
         pretty_name: 'Choices',
-        default: jsPsych.ALL_KEYS,
-        description: 'The keys the subject is allowed to press to respond to the stimulus.'
+        default: undefined,
+        description: 'The labels of the buttons the subject can click to respond.'
       },
       prompt: {
         type: jsPsych.plugins.parameterType.STRING,
@@ -100,7 +84,7 @@ jsPsych.plugins["custom-stop-signal-plugin"] = (function() {
     // store response
     var response = {
       rt: null,
-      key: null
+      button: null
     };
 
     // function to end trial when it is time
@@ -108,11 +92,6 @@ jsPsych.plugins["custom-stop-signal-plugin"] = (function() {
 
       // kill any remaining setTimeout handlers
       jsPsych.pluginAPI.clearAllTimeouts();
-
-      // kill keyboard listeners
-      if (typeof keyboardListener !== 'undefined') {
-        jsPsych.pluginAPI.cancelKeyboardResponse(keyboardListener);
-      }
 
       // gather the data to store for the trial
       var trial_data = {
@@ -122,7 +101,7 @@ jsPsych.plugins["custom-stop-signal-plugin"] = (function() {
         "second_stimulus": trial.stimulus2,
         "onset_of_first_stimulus": trial.fixation_duration,
         "onset_of_second_stimulus": trial.ISI + trial.fixation_duration,
-        "key_press": response.key
+        "button_press": response.button
       };
 
       // clear the display
@@ -133,36 +112,43 @@ jsPsych.plugins["custom-stop-signal-plugin"] = (function() {
     };
 
     // function to handle responses by the subject
-    var after_response = function(info) {
+    var after_response = function(choice) {
+      return function() {
+        // record the time of the response
+        var end_time = (new Date()).getTime();
+        response.rt = end_time - start_time;
+        response.button = choice;
 
-      // after a valid response, the stimulus will have the CSS class 'responded'
-      // which can be used to provide visual feedback that a response was recorded
-      display_element.querySelector('#jspsych-image-keyboard-response-stimulus').className += ' responded';
+        // after a valid response, the stimulus will have the CSS class 'responded'
+        // which can be used to provide visual feedback that a response was recorded
+        display_element.querySelector('#jspsych-image-keyboard-response-stimulus').className += ' responded';
 
-      // only record the first response
-      if (response.key == null) {
-        response = info;
-      }
-
-      if (trial.response_ends_trial) {
-        end_trial();
+        if (trial.response_ends_trial) {
+          end_trial();
+        }
       }
     };
 
-    // start the response listener
-    if (trial.choices != jsPsych.NO_KEYS) {
-      var keyboardListener = jsPsych.pluginAPI.getKeyboardResponse({
-        callback_function: after_response,
-        valid_responses: trial.choices,
-        rt_method: 'date',
-        persist: false,
-        allow_held_key: false
-      });
-    }
+    
 
     if (trial.fixation_duration !== null) {
       jsPsych.pluginAPI.setTimeout(function() {
         display_element.innerHTML = new_html;
+
+        // start the response listener
+        var buttons_html = '<div id="jspsych-html-button-response-btngroup">';
+        for (var i = 0; i < trial.choices.length; i++) {
+          buttons_html += '<button class="jspsych-btn" id="jspsych-html-button-response-button-' + i +'" data-choice="'+i+'">'+trial.choices[i]+'</button>';
+        }
+        buttons_html += '</div>';
+
+        display_element.innerHTML += buttons_html;
+
+        // add event listeners to buttons
+        for (var i = 0; i < trial.choices.length; i++) {
+          display_element.querySelector('#jspsych-html-button-response-button-' + i).addEventListener('click', after_response(i));
+        }
+
       }, trial.fixation_duration)
     }
 
@@ -171,10 +157,24 @@ jsPsych.plugins["custom-stop-signal-plugin"] = (function() {
       if (trial.ISI !== null) {
         jsPsych.pluginAPI.setTimeout(function() {
           display_element.innerHTML = new_html_2;
+
+          // start the response listener
+          var buttons_html = '<div id="jspsych-html-button-response-btngroup">';
+          for (var i = 0; i < trial.choices.length; i++) {
+            buttons_html += '<button class="jspsych-btn" id="jspsych-html-button-response-button-' + i +'" data-choice="'+i+'">'+trial.choices[i]+'</button>';
+          }
+          buttons_html += '</div>';
+
+          display_element.innerHTML += buttons_html;
+
+          // add event listeners to buttons
+          for (var i = 0; i < trial.choices.length; i++) {
+            display_element.querySelector('#jspsych-html-button-response-button-' + i).addEventListener('click', after_response(i));
+          }
+
         }, trial.ISI + trial.fixation_duration);
       }
     }
-
 
     // end trial if trial_duration is set
     if (trial.trial_duration !== null) {
@@ -183,6 +183,9 @@ jsPsych.plugins["custom-stop-signal-plugin"] = (function() {
       }, trial.trial_duration + trial.fixation_duration);
     }
 
+    
+
+    var start_time = (new Date()).getTime();
   };
 
   return plugin;
